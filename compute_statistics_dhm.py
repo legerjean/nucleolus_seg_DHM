@@ -12,31 +12,14 @@ from scipy import misc
 from skimage import segmentation
 
 
-
-#############################
-# Compute features
-#############################
-
-
-def compute_features(directory, gfp_virtual_annotations_filename):
-    manual_mode = True
+def compute_features(directory, gfp_virtual_annotations_filename, dapi_virtual_annotations_filename):
+    manual_mode = False     # not useful for DHM images
 
     # Data cleaning
-    dapi_virtual_annotations = np.load('/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_dapi_close_shifted/predictions.npy')  # to be checked
-    dapi_virtual_annotations_for_masks = np.load('/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_dapi_close_shifted/predictions.npy')  # to be checked
-    mask_5_shifted_eroded = np.zeros(dapi_virtual_annotations_for_masks.shape)
-    for i in range(75):
-        mask_5_shifted_i = dapi_virtual_annotations_for_masks[i]
-        mask_5_shifted_eroded[i] = ndimage.binary_erosion(mask_5_shifted_i, structure=disk(15))
-    mask_5_shifted_eroded = mask_5_shifted_eroded.astype(np.uint8)
-    #dapi_virtual_annotations = np.load('./samples/labels_dapi_close_shifted.npy')  # to be checked
-    #dapi_virtual_annotations = mask_5_shifted_eroded  # to be checked
-    mask_CZ = np.load('./samples/labels_nucleoli_manual_shifted_0.npy')
-
-    #dapi_virtual_annotations = np.load('/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_dapi_close_shifted/predictions.npy')  # to be checked
-
+    dapi_virtual_annotations = np.load(dapi_virtual_annotations_filename)
+    dapi_virtual_annotations_for_masks = dapi_virtual_annotations
     gfp_virtual_annotations = np.load(gfp_virtual_annotations_filename)
-    labels_nucleoli_manual_improved = np.load('/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_dapi_filled/predictions.npy')  # ignored input
+    labels_nucleoli_manual_improved = np.load(dapi_virtual_annotations_filename)  # ignored input
     labels_nucleoli_manual_improved = labels_nucleoli_manual_improved[0:25]
 
     border_mask = generate_border_mask(dapi_virtual_annotations_for_masks)
@@ -60,8 +43,6 @@ def compute_features(directory, gfp_virtual_annotations_filename):
         labels_nucleoli_manual_improved_wo_border = np.multiply(labels_nucleoli_manual_improved, 1 - border_mask[0:25])
         gfp_virtual_annotations_manual = np.multiply(np.multiply(gfp_virtual_annotations[0:25], 1 - manual_mask),
                                                      1 - border_mask[0:25])
-
-    manual_nb_nucleoli = np.load('./statistics/dhm_labels_nucleoli_manual_shifted_0_shifted_dapi_DL/nb_nucleoli.npy')
 
     # Define statistics inputs
     if manual_mode:
@@ -88,8 +69,6 @@ def compute_features(directory, gfp_virtual_annotations_filename):
     area_nuclei = []
     area_nucleoli = []
 
-    test_area = []
-
     for i in range(nb_nucleoli_inputs):
         nb_nucleoli.append([])
         volume_nucleoli.append([])
@@ -112,10 +91,6 @@ def compute_features(directory, gfp_virtual_annotations_filename):
             nuclei_props = regionprops(nuclei_labels_i, phase_image_i)
             nb_cells_i = len(nuclei_props) - 1  # background is not a cell
 
-            # Loop on the cells in one image
-            error_nucleoli_3 = np.zeros((1408, 1920))
-            error_nucleoli_4 = np.zeros((1408, 1920))
-
             for region_nuclei_j in nuclei_props:
                 j = region_nuclei_j.label
 
@@ -132,21 +107,6 @@ def compute_features(directory, gfp_virtual_annotations_filename):
                 # Count number of nucleoli per cell
                 nb_nucleoli[inputs_i].append(len(nucleoli_one_cell_props))  # list of arrays
 
-                if len(nucleoli_one_cell_props) == 3:
-                    nb_manual = manual_nb_nucleoli[0][counter]
-                    if nb_manual != len(nucleoli_one_cell_props):
-                        error_nucleoli_3 = error_nucleoli_3 + nucleoli_one_cell*255
-
-                if len(nucleoli_one_cell_props) == 4:
-                    nb_manual = manual_nb_nucleoli[0][counter]
-                    if nb_manual != len(nucleoli_one_cell_props):
-                        error_nucleoli_4 = error_nucleoli_4 + nucleoli_one_cell * 255
-                #
-                #        #misc.imsave('./figures_errors/image_' + str(i) + '_error' + str(j) + '.png', nucleoli_one_cell * 255)
-                #        #misc.imsave('./figures_errors/image_' + str(i) + '_gfp.png', gfp_image_i)
-                #        #misc.imsave('./figures_errors/image_' + str(i) + '_phase.png', phase_image_i)
-
-
                 # Volume and area of nucleoli per cell
                 area_nucleoli_j = 0
                 pseudo_volume_nucleoli_j = 0
@@ -161,18 +121,6 @@ def compute_features(directory, gfp_virtual_annotations_filename):
                 volume_nucleoli[inputs_i].append(pseudo_volume_nucleoli_j)  # list of arrays
 
                 counter = counter + 1
-
-            error_nucleoli_3 = error_nucleoli_3.astype(np.uint8)
-            error_nucleoli_4 = error_nucleoli_4.astype(np.uint8)
-            mask_improved_i_contour = segmentation.mark_boundaries(phase_image_i, error_nucleoli_3, color=[255, 0, 0])
-            mask_improved_i_contour2 = segmentation.mark_boundaries(mask_improved_i_contour, error_nucleoli_4, color=[0, 0, 255])
-            mask_improved_i_contour3 = segmentation.mark_boundaries(mask_improved_i_contour2, dapi_virtual_annotations_clean[i], color=[0, 255, 0])
-
-            # misc.toimage(mask_improved_i_contour3 * 255, cmin=0, cmax=255).save('./figures_errors/image_' + str(i) + '_errors.png')
-            # misc.imsave('./figures_errors/image_' + str(i) + '_phase_errors.png', phase_image_i)
-            #
-            # mask_improved_i_contour4 = segmentation.mark_boundaries(phase_image_i, mask_CZ[i], color=[255, 255, 0])
-            # misc.toimage(mask_improved_i_contour4 * 255, cmin=0, cmax=255).save('./figures_errors/image_' + str(i) + '_errors_manual_.png')
 
     nb_nucleoli_array = np.array(nb_nucleoli)
     area_nucleoli_array = np.array(area_nucleoli)
@@ -233,89 +181,7 @@ def remove_zeros(directory, folder):
     np.save(os.path.join(path, 'volume_nucleoli_wo_0.npy'), volume_nucleoli_array_new)
 
 
-def remove_zeros_2_inputs(directory1, folder1, directory2, folder2):
-    # Load features
-    nb_nucleoli_array1 = np.load(folder1 + 'nb_nucleoli.npy')
-    area_nucleoli_array1 = np.load(folder1 + 'area_nucleoli.npy')
-    area_nuclei_array1 = np.load(folder1 + 'area_nuclei.npy')
-    volume_nucleoli_array1 = np.load(folder1 + 'volume_nucleoli.npy')
-    nb_nucleoli_array2 = np.load(folder2 + 'nb_nucleoli.npy')
-    area_nucleoli_array2 = np.load(folder2 + 'area_nucleoli.npy')
-    area_nuclei_array2 = np.load(folder2 + 'area_nuclei.npy')
-    volume_nucleoli_array2 = np.load(folder2 + 'volume_nucleoli.npy')
-
-    nb_nucleoli_new_1 = []
-    area_nucleoli_new_1 = []
-    area_nuclei_new_1 = []
-    volume_nucleoli_new_1 = []
-    nb_nucleoli_new_1.append([])
-    area_nucleoli_new_1.append([])
-    area_nuclei_new_1.append([])
-    volume_nucleoli_new_1.append([])
-    nb_nucleoli_new_2 = []
-    area_nucleoli_new_2 = []
-    area_nuclei_new_2 = []
-    volume_nucleoli_new_2 = []
-    nb_nucleoli_new_2.append([])
-    area_nucleoli_new_2.append([])
-    area_nuclei_new_2.append([])
-    volume_nucleoli_new_2.append([])
-
-    pop_index = 0
-    nb_cells_tot = len(nb_nucleoli_array1[pop_index])
-    nb_nucleoli_array1 = nb_nucleoli_array1[pop_index]
-    area_nucleoli_array1 = area_nucleoli_array1[pop_index]
-    area_nuclei_array1 = area_nuclei_array1[pop_index]
-    volume_nucleoli_array1 = volume_nucleoli_array1[pop_index]
-    nb_nucleoli_array2 = nb_nucleoli_array2[pop_index]
-    area_nucleoli_array2 = area_nucleoli_array2[pop_index]
-    area_nuclei_array2 = area_nuclei_array2[pop_index]
-    volume_nucleoli_array2 = volume_nucleoli_array2[pop_index]
-
-    for i in range(nb_cells_tot):
-        if nb_nucleoli_array1[i] != 0 and nb_nucleoli_array2[i] != 0:
-            nb_nucleoli_new_1[pop_index].append(nb_nucleoli_array1[i])
-            area_nucleoli_new_1[pop_index].append(area_nucleoli_array1[i])
-            area_nuclei_new_1[pop_index].append(area_nuclei_array1[i])
-            volume_nucleoli_new_1[pop_index].append(volume_nucleoli_array1[i])
-            nb_nucleoli_new_2[pop_index].append(nb_nucleoli_array2[i])
-            area_nucleoli_new_2[pop_index].append(area_nucleoli_array2[i])
-            area_nuclei_new_2[pop_index].append(area_nuclei_array2[i])
-            volume_nucleoli_new_2[pop_index].append(volume_nucleoli_array2[i])
-
-    nb_nucleoli_array_new_1 = np.array(nb_nucleoli_new_1)
-    area_nucleoli_array_new_1 = np.array(area_nucleoli_new_1)
-    area_nuclei_array_new_1 = np.array(area_nuclei_new_1)
-    volume_nucleoli_array_new_1 = np.array(volume_nucleoli_new_1)
-    nb_nucleoli_array_new_2 = np.array(nb_nucleoli_new_2)
-    area_nucleoli_array_new_2 = np.array(area_nucleoli_new_2)
-    area_nuclei_array_new_2 = np.array(area_nuclei_new_2)
-    volume_nucleoli_array_new_2 = np.array(volume_nucleoli_new_2)
-
-    print(len(nb_nucleoli_array_new_1[0]))
-    print(len(nb_nucleoli_array1))
-    print(len(nb_nucleoli_array_new_2[0]))
-    print(len(nb_nucleoli_array2))
-
-    parent_dir = "./statistics"
-    path1 = os.path.join(parent_dir, directory1)
-    np.save(os.path.join(path1, 'nb_nucleoli_wo_0.npy'), nb_nucleoli_array_new_1)
-    np.save(os.path.join(path1, 'area_nucleoli_wo_0.npy'), area_nucleoli_array_new_1)
-    np.save(os.path.join(path1, 'area_nuclei_wo_0.npy'), area_nuclei_array_new_1)
-    np.save(os.path.join(path1, 'volume_nucleoli_wo_0.npy'), volume_nucleoli_array_new_1)
-    path2 = os.path.join(parent_dir, directory2)
-    np.save(os.path.join(path2, 'nb_nucleoli_wo_0.npy'), nb_nucleoli_array_new_2)
-    np.save(os.path.join(path2, 'area_nucleoli_wo_0.npy'), area_nucleoli_array_new_2)
-    np.save(os.path.join(path2, 'area_nuclei_wo_0.npy'), area_nuclei_array_new_2)
-    np.save(os.path.join(path2, 'volume_nucleoli_wo_0.npy'), volume_nucleoli_array_new_2)
-
-
-##############################
-# Intra population statistics
-##############################
-
 def intra_population_statistics(folder):
-    #folder = './statistics/region_growing_055_wo_dil/'
 
     # Load features
     nb_nucleoli_array = np.load(folder + 'nb_nucleoli_wo_0.npy')
@@ -374,13 +240,6 @@ def intra_population_statistics(folder):
         #nucleoli_dict_csv[str(value)] = area_nucleoli_array[indices[0]]
         std_area_nuclei_separated[counter] = np.std(area_nucleoli_array[pop_index][indices[0]], ddof=1)
 
-    # rows = zip_longest(nucleoli_dict_csv['1'], nucleoli_dict_csv['2'], nucleoli_dict_csv['3'], nucleoli_dict_csv['4'])
-    # with open('./statistics/virtual_annotations_wo_cluster/nucleoli.csv', "w") as f:
-    #     writer = csv.writer(f)
-    #     for row in rows:
-    #         writer.writerow(row)
-    # f.close()
-
     # Print statistics
     print('----------- Statistics on full dataset -------------')
     print('nb_cells             = ' + str("%.2f" % nb_cells_tot))
@@ -408,7 +267,6 @@ def intra_population_statistics(folder):
         print('mean_area_nucleoli   = ' + str("%.2f" % mean_area_nucleoli_separated[counter]))
         print('std_area_nucleoli    = ' + str("%.2f" % std_area_nuclei_separated[counter]))
         print('\n')
-        #print('')
 
     my_dict = {'nb_cells': nb_cells_tot,
                'nb_nucleoli': nb_nucleoli_total,
@@ -525,85 +383,6 @@ def intra_population_statistics(folder):
     plt.savefig(folder + 'features_hist_' + extension_name + '.png')
 
 
-def plot_details_histograms(folder_area, folder_counting):
-
-    nb_nucleoli_array = np.load(folder_counting + '/nb_nucleoli_wo_0.npy')
-    area_nucleoli_array = np.load(folder_area + '/area_nucleoli_wo_0.npy')
-
-    nb_nucleoli_range = np.unique(nb_nucleoli_array[0])
-    mean_area_nucleoli_separated = np.zeros(len(nb_nucleoli_range))
-    std_area_nuclei_separated = np.zeros(len(nb_nucleoli_range))
-    nb_cells_separated = np.zeros(len(nb_nucleoli_range))
-
-    nbins = 30
-    plt.figure(figsize=(12, 12))
-    for counter, value in enumerate(nb_nucleoli_range):
-        indices = np.where(nb_nucleoli_array[0] == value)
-        nb_cells_separated[counter] = len(indices[0])
-        mean_area_nucleoli_separated[counter] = np.mean(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201))
-        std_area_nuclei_separated[counter] = np.std(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201), ddof=1)
-        print('----------- Statistics on subset with ' + str(value) + ' nucleoli -------------')
-        print('nb_cells             = ' + str("%.2f" % nb_cells_separated[counter]))
-        print('mean_area_nucleoli   = ' + str("%.2f" % mean_area_nucleoli_separated[counter]))
-        print('std_area_nucleoli    = ' + str("%.2f" % std_area_nuclei_separated[counter]))
-        print('\n')
-
-
-        if counter < 4:
-            plt.subplot(2, 2, counter + 1)
-            plt.hist(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201), bins=nbins, range=(0, 50),
-                     histtype='bar', alpha=0.7, density=False)
-            plt.ylabel(r'Frequency', fontsize=14)
-            plt.xlabel(r'Nucleolar area per cell [$\mu m^2$]', fontsize=14)
-            plt.title(str(value) + ' nucleoli', fontsize=18)
-    #plt.savefig(folder_area + '/area_hist_details_' + extension_name + '.png')
-
-
-def plot_confusion_matrices(folder):
-    #entry_true = np.load('./statistics/dhm_labels_nucleoli_manual_shifted_0/nb_nucleoli.npy')
-    entry_true = np.load('./statistics/dhm_labels_nucleoli_manual_shifted_0_shifted_dapi_DL/nb_nucleoli.npy')
-
-    entry_true = entry_true[0]
-    entry_pred = np.load(folder + '/nb_nucleoli.npy')
-    entry_pred = entry_pred[0]
-    entry_pred = entry_pred[0:len(entry_true)]
-
-    # Remove zeros in true and pred
-    non_zeros_true = np.nonzero(entry_true)
-    entry_true = entry_true[non_zeros_true]
-    entry_pred = entry_pred[non_zeros_true]
-    non_zeros_pred = np.nonzero(entry_pred)
-    entry_true = entry_true[non_zeros_pred]
-    entry_pred = entry_pred[non_zeros_pred]
-
-    # Concatenate to generate the labels
-    entry_concat = np.array([entry_true, entry_pred])
-
-    cm_virtual_manual = confusion_matrix(entry_true, entry_pred)
-    sh = cm_virtual_manual.shape
-    cm_virtual_manual_n = cm_virtual_manual.astype('float') / cm_virtual_manual.sum(axis=0)[np.newaxis, :]
-    df_cm = pd.DataFrame(cm_virtual_manual, range(sh[0]), range(sh[0]))
-    df_cm_n = pd.DataFrame(cm_virtual_manual_n, range(sh[0]), range(sh[0]))
-
-    plt.figure(figsize=(20,7))
-    sn.set(font_scale=1.4) # for label size
-    plt.subplot(1,2,1)
-    x_axis_labels = np.unique(entry_concat)
-    y_axis_labels = np.unique(entry_concat)
-    sn.heatmap(df_cm_n, annot=True, annot_kws={"size": 14}, cmap='Purples', xticklabels=x_axis_labels, yticklabels=y_axis_labels) # font size
-    plt.ylabel(r'Manual annotations', fontsize = 14)
-    plt.xlabel(r'Automatic predictions', fontsize = 14)
-    plt.title(r'Normalized confusion matrix', fontsize = 18)
-    plt.subplot(1,2,2)
-    sn.heatmap(df_cm, annot=True, annot_kws={"size": 14}, cmap='Purples', fmt='d', xticklabels=x_axis_labels, yticklabels=y_axis_labels) # font size
-    plt.ylabel(r'Manual annotations', fontsize = 14)
-    plt.xlabel(r'Automatic predictions', fontsize = 14)
-    plt.title(r'Confusion matrix', fontsize = 18)
-    plt.savefig(folder + '/confusion_matrix.png')
-
-    plt.show()
-
-
 def round_to_n(x, n_digits):
     return round(x, n_digits-(1+int(floor(log10(abs(x))))))
 
@@ -611,8 +390,7 @@ def round_to_n(x, n_digits):
 def round_metrics():
     parent_dir = './statistics'
 
-    folder_names = ['dhm_labels_nucleoli_RG_t0125_v17_wo_holes_dilated1',
-                    'dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2'
+    folder_names = ['dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2_new'
                     ]
 
     for i in range(len(folder_names)):
@@ -643,62 +421,23 @@ def round_metrics():
 def print_table_all():
 
     parent_dir = './statistics'
-    pickle_in = open(parent_dir + '/dhm_labels_nucleoli_RG_t0125_v17_wo_holes_dilated1/statistics_rounded.pkl', "rb")
-    my_dict_1 = pickle.load(pickle_in)
-    pickle_in = open(parent_dir + '/dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2/statistics_rounded.pkl', "rb")
+    pickle_in = open(parent_dir + '/dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2_new/statistics_rounded.pkl', "rb")
     my_dict_3 = pickle.load(pickle_in)
 
-    my_file = open(parent_dir + '/statistics_dhm.txt', "w")
-    my_file.write('Metric' + ' '
-                  + 't-0125-v17' + ' '
-                  + 't-015-v18' + '\n')
+    my_file = open(parent_dir + '/statistics_dhm_new.txt', "w")
+    my_file.write('Metric' + ' ' + 't-015-v18' + '\n')
 
-    for (k_1, v_1), (k_3, v_3)\
-            in zip(my_dict_1.items(), my_dict_3.items()):
-        my_file.write(k_1 + ' '
-                      + str(v_1).replace('.', ',') + ' '
-                      + str(v_3).replace('.', ',') + '\n')
+    for (k_3, v_3) in my_dict_3.items():
+        my_file.write(k_3 + ' ' + str(v_3).replace('.', ',') + '\n')
 
     my_file.close()
 
-# Manual
-# folder_name1 = 'dhm_labels_nucleoli_manual_shifted_0_shifted_dapi_DL_eroded15'
-# compute_features(folder_name1, './samples/labels_nucleoli_manual_shifted_0.npy')
-# remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
-# intra_population_statistics('./statistics/' + folder_name1 + '/')
-# plot_details_histograms('./statistics/dhm_labels_nucleoli_manual_shifted_0_shifted_dapi_DL', './statistics/dhm_labels_nucleoli_manual_shifted_0_shifted_dapi_DL')
 
-# # Method 17
-# folder_name1 = 'dhm_labels_nucleoli_RG_t0125_v17_wo_holes_dilated1'
-# compute_features(folder_name1, '/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_nucleoli_RG_t0125_v17_wo_holes_dilated1/predictions.npy')
-# remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
-# intra_population_statistics('./statistics/' + folder_name1 + '/')
-# plot_details_histograms('./statistics/dhm_labels_nucleoli_RG_t0125_v17_wo_holes_dilated1', './statistics/dhm_labels_nucleoli_RG_t0125_v17_wo_holes_dilated1')
-# plot_confusion_matrices('./statistics/' + folder_name1 + '/')
-#
-# # Method 18
-# folder_name1 = 'dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2_dapi_shifted_DL_eroded15'
-# compute_features(folder_name1, '/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_nucleoli_RG_t015_v18_wo_holes_dilated2/predictions.npy')
-# remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
-# intra_population_statistics('./statistics/' + folder_name1 + '/')
-# plot_details_histograms('./statistics/dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2', './statistics/dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2')
-# plot_confusion_matrices('./statistics/' + folder_name1 + '/')
-
-# # Method 24
-# folder_name1 = 'dhm_labels_nucleoli_RG_t010_v24_wo_holes_shifted_0'
-# compute_features(folder_name1, '/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_labels_nucleoli_RG_t010_v24_wo_holes_shifted_0/predictions.npy')
-# remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
-# intra_population_statistics('./statistics/' + folder_name1 + '/')
-# plot_details_histograms('./statistics/dhm_labels_nucleoli_RG_t010_v24_wo_holes_shifted_0', './statistics/dhm_labels_nucleoli_RG_t010_v24_wo_holes_shifted_0')
-# plot_confusion_matrices('./statistics/' + folder_name1 + '/')
-
-# Method x
-folder_name1 = 'dhm_samples_nucleoli_cropped'
-compute_features(folder_name1, '/export/home/jleger/Documents/segmentation/microscopy/results/model_unet_2d_n_layers_5_modality_samples_nucleoli_cropped/predictions.npy')
+folder_name1 = 'dhm_labels_nucleoli_RG_t015_v18_wo_holes_dilated2_new'
+compute_features(folder_name1,
+                 './results/model_unet_2d_n_layers_5_modality_labels_nucleoli_RG_t015_v18_wo_holes_dilated2/predictions.npy',
+                 './results/model_unet_2d_n_layers_5_modality_labels_dapi_filled/predictions.npy')
 remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
 intra_population_statistics('./statistics/' + folder_name1 + '/')
-plot_details_histograms('./statistics/dhm_samples_nucleoli_cropped', './statistics/dhm_samples_nucleoli_cropped')
-plot_confusion_matrices('./statistics/' + folder_name1 + '/')
-
-#round_metrics()
-#print_table_all()
+round_metrics()
+print_table_all()

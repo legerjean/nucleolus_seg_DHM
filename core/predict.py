@@ -2,7 +2,7 @@ from core.utils_core import *
 from core.train import *
 import numpy as np
 
-gpu = 1
+gpu = 0
 os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
 
 

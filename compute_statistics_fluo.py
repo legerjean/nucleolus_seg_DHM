@@ -10,18 +10,12 @@ import os
 import matplotlib.pyplot as plt
 
 
-#############################
-# Compute features
-#############################
-
-
-def compute_features(directory, gfp_virtual_annotations_filename):
-    manual_mode = False
+def compute_features(directory, gfp_virtual_annotations_filename, dapi_virtual_annotations_filename, manual_mode):
 
     # Data cleaning
-    dapi_virtual_annotations = np.load('./samples/labels_dapi_close.npy')
+    dapi_virtual_annotations = np.load(dapi_virtual_annotations_filename)
     gfp_virtual_annotations = np.load(gfp_virtual_annotations_filename)
-    labels_nucleoli_manual_improved = np.load('./samples/labels_dapi_close.npy')  # ignored input
+    labels_nucleoli_manual_improved = np.load(dapi_virtual_annotations_filename)  # ignored input
     labels_nucleoli_manual_improved = labels_nucleoli_manual_improved[0:25]
 
     border_mask = generate_border_mask(dapi_virtual_annotations)
@@ -268,10 +262,6 @@ def remove_zeros_2_inputs(directory1, folder1, directory2, folder2):
     np.save(os.path.join(path2, 'volume_nucleoli_wo_0.npy'), volume_nucleoli_array_new_2)
 
 
-##############################
-# Intra population statistics
-##############################
-
 def intra_population_statistics(folder):
 
     # Load features
@@ -322,21 +312,18 @@ def intra_population_statistics(folder):
     std_area_nuclei_separated = np.zeros(len(nb_nucleoli_range))
     nb_cells_separated = np.zeros(len(nb_nucleoli_range))
 
-    # nucleoli_dict_csv = {}
+    mean_volume_nucleoli_separated = np.zeros(len(nb_nucleoli_range))
+    std_volume_nuclei_separated = np.zeros(len(nb_nucleoli_range))
+
     # Area nucleoli non-normalized
     for counter, value in enumerate(nb_nucleoli_range):
         indices = np.where(nb_nucleoli_array[pop_index] == value)
         nb_cells_separated[counter] = len(indices[0])
         mean_area_nucleoli_separated[counter] = np.mean(area_nucleoli_array[pop_index][indices[0]])
-        #nucleoli_dict_csv[str(value)] = area_nucleoli_array[indices[0]]
         std_area_nuclei_separated[counter] = np.std(area_nucleoli_array[pop_index][indices[0]], ddof=1)
 
-    # rows = zip_longest(nucleoli_dict_csv['1'], nucleoli_dict_csv['2'], nucleoli_dict_csv['3'], nucleoli_dict_csv['4'])
-    # with open('./statistics/virtual_annotations_wo_cluster/nucleoli.csv', "w") as f:
-    #     writer = csv.writer(f)
-    #     for row in rows:
-    #         writer.writerow(row)
-    # f.close()
+        mean_volume_nucleoli_separated[counter] = np.mean(volume_nucleoli_array[pop_index][indices[0]])
+        std_volume_nuclei_separated[counter] = np.std(volume_nucleoli_array[pop_index][indices[0]], ddof=1)
 
     # Print statistics
     print('----------- Statistics on full dataset -------------')
@@ -364,6 +351,11 @@ def intra_population_statistics(folder):
         print('nb_cells             = ' + str("%.2f" % nb_cells_separated[counter]))
         print('mean_area_nucleoli   = ' + str("%.2f" % mean_area_nucleoli_separated[counter]))
         print('std_area_nucleoli    = ' + str("%.2f" % std_area_nuclei_separated[counter]))
+        print('mean_area_nucleoli   = ' + str("%.2f" % np.multiply(mean_area_nucleoli_separated[counter], 0.022201)))
+        print('std_area_nucleoli    = ' + str("%.2f" % np.multiply(std_area_nuclei_separated[counter], 0.022201)))
+
+        print('mean_volume_nucleoli   = ' + str("%.2f" % mean_volume_nucleoli_separated[counter]))
+        print('std_volume_nucleoli    = ' + str("%.2f" % std_volume_nuclei_separated[counter]))
         print('\n')
         #print('')
 
@@ -488,11 +480,15 @@ def plot_details_histograms(folder_area, folder_counting):
 
     nb_nucleoli_array = np.load(folder_counting + '/nb_nucleoli_wo_0.npy')
     area_nucleoli_array = np.load(folder_area + '/area_nucleoli_wo_0.npy')
+    volume_nucleoli_array = np.load(folder_area + '/volume_nucleoli_wo_0.npy')
 
     nb_nucleoli_range = np.unique(nb_nucleoli_array[0])
     mean_area_nucleoli_separated = np.zeros(len(nb_nucleoli_range))
     std_area_nuclei_separated = np.zeros(len(nb_nucleoli_range))
     nb_cells_separated = np.zeros(len(nb_nucleoli_range))
+
+    mean_volume_nucleoli_separated = np.zeros(len(nb_nucleoli_range))
+    std_volume_nuclei_separated = np.zeros(len(nb_nucleoli_range))
 
     nbins = 30
     plt.figure(figsize=(12, 12))
@@ -501,25 +497,29 @@ def plot_details_histograms(folder_area, folder_counting):
         nb_cells_separated[counter] = len(indices[0])
         mean_area_nucleoli_separated[counter] = np.mean(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201))
         std_area_nuclei_separated[counter] = np.std(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201), ddof=1)
+        mean_volume_nucleoli_separated[counter] = np.mean(volume_nucleoli_array[0][indices[0]])
+        std_volume_nuclei_separated[counter] = np.std(volume_nucleoli_array[0][indices[0]], ddof=1)
         print('----------- Statistics on subset with ' + str(value) + ' nucleoli -------------')
         print('nb_cells             = ' + str("%.2f" % nb_cells_separated[counter]))
         print('mean_area_nucleoli   = ' + str("%.2f" % mean_area_nucleoli_separated[counter]))
         print('std_area_nucleoli    = ' + str("%.2f" % std_area_nuclei_separated[counter]))
+        print('mean_volume_nucleoli   = ' + str("%.2f" % mean_volume_nucleoli_separated[counter]))
+        print('std_volume_nucleoli    = ' + str("%.2f" % std_volume_nuclei_separated[counter]))
         print('\n')
 
-        if counter < 4:
-            plt.subplot(2, 2, counter + 1)
-            plt.hist(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201), bins=nbins, range=(0, 50),
-                     histtype='bar', alpha=0.7, density=False)
-            plt.ylabel(r'Frequency', fontsize=14)
-            plt.xlabel(r'Nucleolar area per cell [$\mu m^2$]', fontsize=14)
-            plt.title(str(value) + ' nucleoli', fontsize=18)
+        # if counter < 4:
+        #     plt.subplot(2, 2, counter + 1)
+        #     plt.hist(np.multiply(area_nucleoli_array[0][indices[0]], 0.022201), bins=nbins, range=(0, 50),
+        #              histtype='bar', alpha=0.7, density=False)
+        #     plt.ylabel(r'Frequency', fontsize=14)
+        #     plt.xlabel(r'Nucleolar area per cell [$\mu m^2$]', fontsize=14)
+        #     plt.title(str(value) + ' nucleoli', fontsize=18)
     #plt.savefig(folder_area + '/area_hist_details_' + extension_name + '.png')
 
 
 def plot_confusion_matrices(folder):
 
-    entry_true = np.load('./statistics/labels_nucleoli_manual_shifted_0/nb_nucleoli.npy')
+    entry_true = np.load('./statistics/labels_nucleoli_manual_shifted_0_new/nb_nucleoli.npy')
     entry_true = entry_true[0]
     entry_pred = np.load(folder + '/nb_nucleoli.npy')
     entry_pred = entry_pred[0]
@@ -567,10 +567,10 @@ def round_to_n(x, n_digits):
 def round_metrics():
     parent_dir = './statistics'
 
-    folder_names = ['labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0',
-                    'labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0',
-                    'labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0',
-                    'labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0'
+    folder_names = [#'labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0',
+                    #'labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0',
+                    'labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0_new',
+                    'labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0_new'
                     ]
 
     for i in range(len(folder_names)):
@@ -601,67 +601,71 @@ def round_metrics():
 def print_table_all():
 
     parent_dir = './statistics'
-    pickle_in = open(parent_dir + '/labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0/statistics_rounded.pkl', "rb")
-    my_dict_1 = pickle.load(pickle_in)
-    pickle_in = open(parent_dir + '/labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0/statistics_rounded.pkl', "rb")
-    my_dict_2 = pickle.load(pickle_in)
-    pickle_in = open(parent_dir + '/labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0/statistics_rounded.pkl', "rb")
+    #pickle_in = open(parent_dir + '/labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0/statistics_rounded.pkl', "rb")
+    #my_dict_1 = pickle.load(pickle_in)
+    #pickle_in = open(parent_dir + '/labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0/statistics_rounded.pkl', "rb")
+    #my_dict_2 = pickle.load(pickle_in)
+    pickle_in = open(parent_dir + '/labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0_new/statistics_rounded.pkl', "rb")
     my_dict_3 = pickle.load(pickle_in)
-    pickle_in = open(parent_dir + '/labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0/statistics_rounded.pkl', "rb")
+    pickle_in = open(parent_dir + '/labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0_new/statistics_rounded.pkl', "rb")
     my_dict_4 = pickle.load(pickle_in)
     #pickle_in = open(parent_dir + '/dhm_RG_t010_v7_wo_holes/statistics_rounded.pkl', "rb")
     #my_dict_5 = pickle.load(pickle_in)
     #pickle_in = open(parent_dir + '/labels_nucleoli_fiji/statistics_rounded.pkl', "rb")
     #my_dict_4 = pickle.load(pickle_in)
 
-    my_file = open(parent_dir + '/statistics_fluo.txt', "w")
+    my_file = open(parent_dir + '/statistics_fluo_new.txt', "w")
     my_file.write('Metric' + ' '
-                  + 't-0125-v17' + ' '
-                  + 'rt-045-v17' + ' '
+                  #+ 't-0125-v17' + ' '
+                  #+ 'rt-045-v17' + ' '
                   + 't-015-v18' + ' '
                   + 'rt-045-v18' + '\n')
 
-    for (k_1, v_1), (k_2, v_2), (k_3, v_3), (k_4, v_4)\
-            in zip(my_dict_1.items(), my_dict_2.items(), my_dict_3.items(), my_dict_4.items()):
-        my_file.write(k_2 + ' '
-                      + str(v_1).replace('.', ',') + ' '
-                      + str(v_2).replace('.', ',') + ' '
+    # for (k_1, v_1), (k_2, v_2), (k_3, v_3), (k_4, v_4)\
+    #         in zip(my_dict_1.items(), my_dict_2.items(), my_dict_3.items(), my_dict_4.items()):
+    #     my_file.write(k_2 + ' '
+    #                   + str(v_1).replace('.', ',') + ' '
+    #                   + str(v_2).replace('.', ',') + ' '
+    #                   + str(v_3).replace('.', ',') + ' '
+    #                   + str(v_4).replace('.', ',') + '\n')
+
+    for (k_3, v_3), (k_4, v_4)\
+            in zip(my_dict_3.items(), my_dict_4.items()):
+        my_file.write(k_3 + ' '
                       + str(v_3).replace('.', ',') + ' '
                       + str(v_4).replace('.', ',') + '\n')
 
     my_file.close()
 
-# Manual
-# folder_name1 = 'labels_nucleoli_manual_shifted_0'
-# compute_features(folder_name1, './samples/labels_nucleoli_manual_shifted_0.npy')
-# remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
-# intra_population_statistics('./statistics/' + folder_name1 + '/')
-# plot_details_histograms('./statistics/labels_nucleoli_manual_shifted_0', './statistics/labels_nucleoli_manual_shifted_0')
 
-# # Method 17
-# folder_name1 = 'labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0'
-# folder_name2 = 'labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0'
-# compute_features(folder_name1, './samples/labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0.npy')
-# compute_features(folder_name2, './samples/labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0.npy')
-# remove_zeros_2_inputs(folder_name1, './statistics/' + folder_name1 + '/', folder_name2, './statistics/' + folder_name2 + '/')
-# intra_population_statistics('./statistics/' + folder_name1 + '/')
-# intra_population_statistics('./statistics/' + folder_name2 + '/')
-# plot_details_histograms('./statistics/labels_nucleoli_RG_t0125_v17_wo_holes_dilated1_shifted_0', './statistics/labels_nucleoli_RG_rt045_v17_wo_holes_shifted_0')
-# plot_confusion_matrices('./statistics/' + folder_name1 + '/')
-# plot_confusion_matrices('./statistics/' + folder_name2 + '/')
+# Set 'run_manual' to True to compute the statistics on the manual contours (useful for the confusion matrix).
+# Then, set to False, to get the results for the automatic segmentation.
+run_manual = False
 
-# Method 18
-folder_name1 = 'labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0'
-folder_name2 = 'labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0'
-compute_features(folder_name1, './samples/labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0.npy')
-compute_features(folder_name2, './samples/labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0.npy')
-remove_zeros_2_inputs(folder_name1, './statistics/' + folder_name1 + '/', folder_name2, './statistics/' + folder_name2 + '/')
-intra_population_statistics('./statistics/' + folder_name1 + '/')
-intra_population_statistics('./statistics/' + folder_name2 + '/')
-plot_details_histograms('./statistics/labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0', './statistics/labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0')
-plot_confusion_matrices('./statistics/' + folder_name1 + '/')
-plot_confusion_matrices('./statistics/' + folder_name2 + '/')
-#
-# # Comparison
-# round_metrics()
-# print_table_all()
+if run_manual:
+    folder_name1 = 'labels_nucleoli_manual_shifted_0_new'
+    compute_features(folder_name1,
+                     './samples/labels_nucleoli_manual_shifted_0.npy',
+                     './samples/labels_dapi_close.npy', True)
+    remove_zeros(folder_name1, './statistics/' + folder_name1 + '/')
+    intra_population_statistics('./statistics/' + folder_name1 + '/')
+    plot_details_histograms('./statistics/labels_nucleoli_manual_shifted_0_new',
+                            './statistics/labels_nucleoli_manual_shifted_0_new')
+else:
+    folder_name1 = 'labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0_new'
+    folder_name2 = 'labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0_new'
+    compute_features(folder_name1,
+                    './samples/labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0.npy',
+                    './samples/labels_dapi_close.npy', False)
+    compute_features(folder_name2,
+                    './samples/labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0.npy',
+                    './samples/labels_dapi_close.npy', False)
+    remove_zeros_2_inputs(folder_name1, './statistics/' + folder_name1 + '/', folder_name2, './statistics/' + folder_name2 + '/')
+    intra_population_statistics('./statistics/' + folder_name1 + '/')
+    intra_population_statistics('./statistics/' + folder_name2 + '/')
+    plot_details_histograms('./statistics/labels_nucleoli_RG_t015_v18_wo_holes_dilated2_shifted_0_new',
+                            './statistics/labels_nucleoli_RG_rt045_v18_wo_holes_shifted_0_new')
+    plot_confusion_matrices('./statistics/' + folder_name1 + '/')
+    plot_confusion_matrices('./statistics/' + folder_name2 + '/')
+    round_metrics()
+    print_table_all()
